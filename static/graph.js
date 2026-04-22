@@ -173,6 +173,18 @@ function renderGraph(graph) {
             hideTooltip();
         });
 
+    // 相似度标签
+    const simLabel = g.append('g')
+        .selectAll('text')
+        .data(similarityLinks)
+        .enter()
+        .append('text')
+        .attr('class', 'sim-label')
+        .attr('fill', '#667eea')
+        .attr('font-size', '10px')
+        .attr('text-anchor', 'middle')
+        .text(d => d.score.toFixed(2));
+
     // 绘制节点
     const node = g.append('g')
         .selectAll('g')
@@ -228,6 +240,10 @@ function renderGraph(graph) {
             .attr('y1', d => d.source.y)
             .attr('x2', d => d.target.x)
             .attr('y2', d => d.target.y);
+
+        simLabel
+            .attr('x', d => (d.source.x + d.target.x) / 2)
+            .attr('y', d => (d.source.y + d.target.y) / 2);
 
         node.attr('transform', d => `translate(${d.x},${d.y})`);
     });
