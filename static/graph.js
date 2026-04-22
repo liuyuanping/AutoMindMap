@@ -267,7 +267,8 @@ function showNodeDetail(node) {
         html += `<p class="meta">父节点: ${parentTitle}</p>`;
     }
 
-    html += `<div class="content">${node.content_preview || node.content || '(无内容)'}</div>`;
+    const renderedContent = node.content ? marked.parse(node.content) : '(无内容)';
+    html += `<div class="content">${renderedContent}</div>`;
     nodeDetailDiv.innerHTML = html;
 }
 
