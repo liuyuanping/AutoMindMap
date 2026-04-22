@@ -1,7 +1,6 @@
 let currentGraph = null;
 let simulation = null;
 
-// DOM elements
 const analyzeBtn = document.getElementById('analyzeBtn');
 const saveBtn = document.getElementById('saveBtn');
 const loadBtn = document.getElementById('loadBtn');
@@ -14,7 +13,6 @@ const tooltip = document.getElementById('tooltip');
 const nodeDetailDiv = document.getElementById('nodeDetail');
 const savedFilesDiv = document.getElementById('savedFiles');
 
-// Event listeners
 analyzeBtn.addEventListener('click', analyzeDocuments);
 saveBtn.addEventListener('click', saveGraph);
 loadBtn.addEventListener('click', showLoadDialog);
@@ -36,7 +34,7 @@ async function analyzeDocuments() {
     try {
         const response = await fetch('/api/analyze', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': application/json },
             body: JSON.stringify({ dir_path: dirPath, threshold })
         });
 
@@ -61,6 +59,23 @@ async function analyzeDocuments() {
     }
 }
 
+function getNodeColor(level) {
+    const colors = [
+        '#667eea', // 0: 顶级段落
+        '#764ba2', // 1: # 标题
+        '#48bb78', // 2: ## 标题
+        '#ed8936', // 3: ### 标题
+        '#f56565', // 4: #### 标题
+        '#9f7aea', // 5: ##### 标题
+        '#38b2ac'  // 6: ###### 标题
+    ];
+    return colors[Math.min(level, 6)];
+}
+
+function getNodeRadius(level) {
+    return Math.max(8, 20 - level * 2);
+}
+
 function renderGraph(graph) {
     const container = document.getElementById('graph');
     container.innerHTML = '';
@@ -79,9 +94,8 @@ function renderGraph(graph) {
         .attr('height', height)
         .attr('viewBox', [0, 0, width, height]);
 
-    // 创建缩放行为
     const zoom = d3.zoom()
-        .scaleExtent([0.1, 4])
+        .scaleExtent([0.05, 5])
         .on('zoom', (event) => {
             g.attr('transform', event.transform);
         });
@@ -90,42 +104,66 @@ function renderGraph(graph) {
 
     const g = svg.append('g');
 
-    // 准备节点和边数据
     const nodes = graph.nodes.map(n => ({...n}));
     const edges = graph.edges.map(e => ({...e}));
 
-    // 创建节点ID映射
-    const nodeMap = new Map();
-    nodes.forEach(n => nodeMap.set(n.id, n));
+    // 父子关系边（树状结构）
+    const parentLinks = nodes
+        .filter(n => n.parent_id)
+        .map(n => ({
+            source: n.parent_id,
+            target: n.id,
+            isParent: true
+        }));
 
-    // 转换边为D3格式
-    const links = edges.map(e => ({
+    // 相似度边
+    const similarityLinks = edges.map(e => ({
         source: e.source,
         target: e.target,
-        score: e.score
+        score: e.score,
+        isParent: false
     }));
 
-    // 力导向图模拟
-    simulation = d3.forceSimulation(nodes)
-        .force('link', d3.forceLink(links).id(d => d.id).distance(150))
-        .force('charge', d3.forceManyBody().strength(-300))
-        .force('center', d3.forceCenter(width / 2, height / 2))
-        .force('collision', d3.forceCollide().radius(50));
+    const allLinks = [...parentLinks, ...similarityLinks];
 
-    // 绘制边
-    const link = g.append('g')
+    simulation = d3.forceSimulation(nodes)
+        .force('link', d3.forceLink(allLinks).id(d => d.id).distance(d => d.isParent ? 80 : 150))
+        .force('charge', d3.forceManyBody().strength(-200))
+        .force('center', d3.forceCenter(width / 2, height / 2))
+        .force('collision', d3.forceCollide().radius(30))
+        .force('x', d3.forceX(width / 2).strength(0.05))
+        .force('y', d3.forceY(height / 2).strength(0.05));
+
+    // 绘制父子关系边（实线）
+    const parentLink = g.append('g')
         .selectAll('line')
-        .data(links)
+        .data(parentLinks)
         .enter()
         .append('line')
-        .attr('class', 'link')
-        .attr('stroke-width', d => Math.max(1, d.score * 4))
+        .attr('class', 'parent-link')
+        .attr('stroke', '#888')
+        .attr('stroke-width', 1.5)
+        .attr('stroke-opacity', 0.6);
+
+    // 绘制相似度边（虚线）
+    const simLink = g.append('g')
+        .selectAll('line')
+        .data(similarityLinks)
+        .enter()
+        .append('line')
+        .attr('class', 'sim-link')
+        .attr('stroke', '#667eea')
+        .attr('stroke-width', d => Math.max(1, d.score * 3))
+        .attr('stroke-opacity', 0.5)
+        .attr('stroke-dasharray', '5,5')
         .on('mouseover', function(event, d) {
-            const source = typeof d.source === 'object' ? d.source.id : d.source;
-            const target = typeof d.target === 'object' ? d.target.id : d.target;
+            d3.select(this).attr('stroke-opacity', 1);
             showTooltip(event, `相关度: ${d.score.toFixed(3)}`);
         })
-        .on('mouseout', hideTooltip);
+        .on('mouseout', function() {
+            d3.select(this).attr('stroke-opacity', 0.5);
+            hideTooltip();
+        });
 
     // 绘制节点
     const node = g.append('g')
@@ -140,26 +178,44 @@ function renderGraph(graph) {
             .on('end', dragended))
         .on('click', (event, d) => showNodeDetail(d))
         .on('mouseover', function(event, d) {
-            showTooltip(event, `${d.title || '无标题'}\n${d.doc_path}`);
+            const label = d.title || `Block ${d.chapter_index}.${d.section_index}`;
+            showTooltip(event, `${label}\n${d.doc_path} | lines ${d.start_line}-${d.end_line}`);
         })
         .on('mouseout', hideTooltip);
 
-    // 节点圆圈
+    // 节点外圈（层级指示）
     node.append('circle')
-        .attr('r', d => d.level === 1 ? 15 : 10)
-        .attr('fill', d => d.level === 1 ? '#667eea' : '#764ba2');
+        .attr('r', d => getNodeRadius(d.level))
+        .attr('fill', d => getNodeColor(d.level))
+        .attr('stroke', '#fff')
+        .attr('stroke-width', 2);
+
+    // 节点内圈（类型指示）
+    node.append('circle')
+        .attr('r', d => d.level <= 1 ? 5 : 3)
+        .attr('fill', '#fff')
+        .attr('cx', 0)
+        .attr('cy', 0);
 
     // 节点标签
     node.append('text')
-        .attr('dx', 20)
+        .attr('dx', d => getNodeRadius(d.level) + 5)
         .attr('dy', 4)
-        .text(d => d.title || `Block ${d.chapter_index}.${d.section_index}`)
-        .attr('fill', '#fff')
-        .attr('font-size', '11px');
+        .text(d => {
+            const label = d.title || `P${d.chapter_index}.${d.section_index}`;
+            return label.length > 20 ? label.substring(0, 18) + '...' : label;
+        })
+        .attr('fill', '#ccc')
+        .attr('font-size', '10px');
 
-    // 更新位置
     simulation.on('tick', () => {
-        link
+        parentLink
+            .attr('x1', d => d.source.x)
+            .attr('y1', d => d.source.y)
+            .attr('x2', d => d.target.x)
+            .attr('y2', d => d.target.y);
+
+        simLink
             .attr('x1', d => d.source.x)
             .attr('y1', d => d.source.y)
             .attr('x2', d => d.target.x)
@@ -188,16 +244,22 @@ function renderGraph(graph) {
 
 function showNodeDetail(node) {
     const parentNode = currentGraph.nodes.find(n => n.id === node.parent_id);
-    let html = `<h4>${node.title || '无标题'}</h4>`;
+    const levelNames = ['顶级段落', '章节', '子章节', '小节', '小小节', '极小节', '微节'];
+    const levelName = levelNames[Math.min(node.level, 6)] || '段落';
+
+    let html = `<h4>${node.title || '(段落)'}</h4>`;
     html += `<p class="meta">`;
     html += `文档: ${node.doc_path}<br>`;
     html += `位置: 第${node.start_line}-${node.end_line}行<br>`;
-    html += `级别: ${node.level === 1 ? '章节' : '小节'}<br>`;
-    if (parentNode) {
-        html += `父节点: ${parentNode.title || parentNode.id}`;
-    }
+    html += `级别: ${levelName} (level ${node.level})`;
     html += `</p>`;
-    html += `<div class="content">${node.content_preview || node.content}</div>`;
+
+    if (parentNode) {
+        const parentTitle = parentNode.title || '(段落)';
+        html += `<p class="meta">父节点: ${parentTitle}</p>`;
+    }
+
+    html += `<div class="content">${node.content_preview || node.content || '(无内容)'}</div>`;
     nodeDetailDiv.innerHTML = html;
 }
 
@@ -219,7 +281,7 @@ async function saveGraph() {
     try {
         const response = await fetch('/api/save', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': application/json },
             body: JSON.stringify({ graph: currentGraph, filename })
         });
 
@@ -301,10 +363,8 @@ function hideTooltip() {
     tooltip.classList.remove('show');
 }
 
-// 初始加载已保存的文件列表
 loadSavedFiles();
 
-// 处理窗口大小变化
 window.addEventListener('resize', () => {
     if (currentGraph) {
         renderGraph(currentGraph);
