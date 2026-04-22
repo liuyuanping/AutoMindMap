@@ -10,7 +10,10 @@ const thresholdInput = document.getElementById('threshold');
 const thresholdValue = document.getElementById('thresholdValue');
 const tooltipOffsetInput = document.getElementById('tooltipOffset');
 const tooltipOffsetValue = document.getElementById('tooltipOffsetValue');
+const parentDepthInput = document.getElementById('parentDepth');
+const parentDepthValue = document.getElementById('parentDepthValue');
 let currentTooltipOffset = 30;
+let currentParentDepth = 1;
 const statsDiv = document.getElementById('stats');
 const loadingDiv = document.getElementById('loading');
 const tooltip = document.getElementById('tooltip');
@@ -27,6 +30,14 @@ thresholdInput.addEventListener('input', (e) => {
 tooltipOffsetInput.addEventListener('input', (e) => {
     tooltipOffsetValue.textContent = e.target.value;
     currentTooltipOffset = parseInt(e.target.value);
+});
+
+parentDepthInput.addEventListener('input', (e) => {
+    parentDepthValue.textContent = e.target.value;
+    currentParentDepth = parseInt(e.target.value);
+    if (selectedNodeId && currentGraph) {
+        renderGraph(currentGraph);
+    }
 });
 
 async function analyzeDocuments() {
@@ -148,24 +159,26 @@ function renderGraph(graph) {
             }
         });
 
-        // 通过父子关系连接
-        const findAncestors = (nodeId) => {
+        // 通过父子关系连接（向上找祖先，向下找后代）
+        const findAncestors = (nodeId, depth) => {
+            if (depth <= 0) return;
             const node = nodes.find(n => n.id === nodeId);
             if (node && node.parent_id) {
                 connected.add(node.parent_id);
-                findAncestors(node.parent_id);
+                findAncestors(node.parent_id, depth - 1);
             }
         };
-        const findDescendants = (nodeId) => {
+        const findDescendants = (nodeId, depth) => {
+            if (depth <= 0) return;
             nodes.forEach(n => {
                 if (n.parent_id === nodeId) {
                     connected.add(n.id);
-                    findDescendants(n.id);
+                    findDescendants(n.id, depth - 1);
                 }
             });
         };
-        findAncestors(selectedNodeId);
-        findDescendants(selectedNodeId);
+        findAncestors(selectedNodeId, currentParentDepth);
+        findDescendants(selectedNodeId, currentParentDepth);
 
         visibleNodes = nodes.filter(n => connected.has(n.id));
         visibleLinks = [...parentLinks, ...similarityLinks].filter(l => {
