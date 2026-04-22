@@ -25,7 +25,12 @@ async def index():
 
 @app.post("/api/analyze")
 async def analyze(request: AnalyzeRequest):
-    dir_path = Path(request.dir_path)
+    # 相对路径从项目根目录解析
+    project_root = Path(__file__).parent.parent
+    if Path(request.dir_path).isAbsolute():
+        dir_path = Path(request.dir_path)
+    else:
+        dir_path = (project_root / request.dir_path).resolve()
 
     if not dir_path.exists():
         raise HTTPException(status_code=400, detail="Directory does not exist")
@@ -78,7 +83,11 @@ async def save_graph(data: dict):
 
 @app.get("/api/load")
 async def load_graph(path: str):
-    file_path = Path(path)
+    project_root = Path(__file__).parent.parent
+    if Path(path).isAbsolute():
+        file_path = Path(path)
+    else:
+        file_path = (project_root / path).resolve()
 
     if not file_path.exists():
         raise HTTPException(status_code=400, detail="File does not exist")
@@ -95,7 +104,7 @@ async def list_saved_graphs():
     for f in output_path.glob("*.json"):
         files.append({
             "name": f.name,
-            "path": str(f),
+            "path": str(f.relative_to(project_root)),
             "size": f.stat().st_size,
             "modified": datetime.fromtimestamp(f.stat().st_mtime).isoformat()
         })
