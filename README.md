@@ -1,4 +1,4 @@
-# Document Mind Map
+# Auto Mind Map
 
 文档关系分析与可视化工具。
 

@@ -9,7 +9,7 @@ from app.parser import parse_markdown_files
 from app.analyzer import analyze_blocks_simple, analyze_blocks_tfidf, analyze_blocks_claude
 from app.schemas import AnalyzeRequest
 
-app = FastAPI(title="Document Mind Map")
+app = FastAPI(title="Auto Mind Map")
 
 static_path = Path(__file__).parent.parent / "static"
 app.mount("/static", StaticFiles(directory=str(static_path)), name="static")

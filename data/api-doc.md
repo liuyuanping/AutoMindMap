@@ -2,7 +2,7 @@
 
 ## 概述
 
-Document Mind Map 提供RESTful API接口用于文档分析。
+Auto Mind Map 提供RESTful API接口用于文档分析。
 
 ## 接口列表
 
