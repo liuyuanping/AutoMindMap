@@ -116,6 +116,9 @@ function getNodeRadius(level) {
 }
 
 function renderGraph(graph) {
+    // 清空文档颜色映射，重新分配
+    Object.keys(docColors).forEach(k => delete docColors[k]);
+
     const container = document.getElementById('graph');
     container.innerHTML = '';
 
