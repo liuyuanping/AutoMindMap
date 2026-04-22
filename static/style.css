@@ -252,7 +252,7 @@ header h1 {
 }
 
 .tooltip {
-    position: absolute;
+    position: fixed;
     background: #0f3460;
     border: 1px solid #667eea;
     padding: 10px 15px;
