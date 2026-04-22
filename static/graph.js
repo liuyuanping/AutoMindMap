@@ -84,23 +84,29 @@ async function analyzeDocuments() {
 
 function getNodeColor(level) {
     const colors = [
-        '#667eea', // 0: 顶级段落
-        '#764ba2', // 1: # 标题
-        '#48bb78', // 2: ## 标题
-        '#ed8936', // 3: ### 标题
-        '#f56565', // 4: #### 标题
-        '#9f7aea', // 5: ##### 标题
-        '#38b2ac'  // 6: ###### 标题
+        '#6366f1', // 0: 顶级段落 - 靛蓝
+        '#8b5cf6', // 1: # 标题 - 紫色
+        '#06b6d4', // 2: ## 标题 - 青色
+        '#10b981', // 3: ### 标题 - 绿色
+        '#f59e0b', // 4: #### 标题 - 琥珀
+        '#ef4444', // 5: ##### 标题 - 红色
+        '#ec4899'  // 6: ###### 标题 - 粉色
     ];
     return colors[Math.min(level, 6)];
 }
 
 // 文件颜色映射
 const docColors = {};
+// 文件颜色映射（15种）
 const docColorPalette = [
-    '#667eea', '#764ba2', '#48bb78', '#ed8936', '#f56565',
-    '#9f7aea', '#38b2ac', '#ed64a6', '#20c997', '#6610f2',
-    '#fd7e14', '#3b82f6', '#10b981', '#ef4444', '#8b5cf6'
+    '#e74c3c', '#3498db', '#2ecc71', '#f39c12', '#9b59b6',
+    '#1abc9c', '#e67e22', '#34495e', '#16a085', '#8e44ad',
+    '#d35400', '#27ae60', '#2980b9', '#c0392b', '#7f8c8d'
+];
+
+// 层级颜色（7种，与文档颜色区分）
+const levelColorPalette = [
+    '#ecf0f1', '#bdc3c7', '#95a5a6', '#7f8c8d', '#5d6d7e', '#34495e', '#2c3e50'
 ];
 
 function getDocColor(docPath) {
@@ -116,9 +122,7 @@ function getNodeRadius(level) {
 }
 
 function renderGraph(graph) {
-    // 清空文档颜色映射，重新分配
-    Object.keys(docColors).forEach(k => delete docColors[k]);
-
+    // 不再清空docColors，保持颜色分配稳定
     const container = document.getElementById('graph');
     container.innerHTML = '';
 
@@ -291,20 +295,24 @@ function renderGraph(graph) {
         })
         .on('mouseout', hideTooltip);
 
-    // 节点外圈（按文档着色）
+    // 节点外圈（选中指示）- 最大
+    const outerRadius = d => getNodeRadius(d.level) - 5;
     node.append('circle')
-        .attr('r', d => getNodeRadius(d.level))
-        .attr('fill', d => getDocColor(d.doc_path))
-        .attr('stroke', '#fff')
-        .attr('stroke-width', 2);
-
-    // 节点内圈（选中指示）
-    node.append('circle')
-        .attr('r', d => d.level <= 1 ? 5 : 3)
+        .attr('r', outerRadius)
         .attr('fill', '#fff')
+        .attr('opacity', d => selectedNodeId && selectedNodeId !== d.id ? 0.2 : 0.9);
+
+    // 节点中圈（文档颜色）- 是外圈的4/5
+    node.append('circle')
+        .attr('r', d => outerRadius(d) * 4 / 5)
+        .attr('fill', d => getDocColor(d.doc_path));
+
+    // 节点中心圈（层级颜色）
+    node.append('circle')
+        .attr('r', d => outerRadius(d) * 3 / 5)
+        .attr('fill', d => getNodeColor(d.level))
         .attr('cx', 0)
-        .attr('cy', 0)
-        .attr('opacity', d => selectedNodeId && selectedNodeId !== d.id ? 0.3 : 1);
+        .attr('cy', 0);
 
     // 节点标签
     node.append('text')

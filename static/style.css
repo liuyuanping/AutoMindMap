@@ -53,13 +53,6 @@ header h1 {
     align-items: flex-end;
     flex-shrink: 0;
 }
-    border-radius: 12px;
-    margin-bottom: 20px;
-    display: flex;
-    gap: 20px;
-    flex-wrap: wrap;
-    align-items: flex-end;
-}
 
 .input-group {
     flex: 1;
@@ -290,8 +283,7 @@ header h1 {
 
 /* D3 样式 */
 .node circle {
-    stroke: #fff;
-    stroke-width: 2px;
+    stroke: none;
 }
 
 .node text {
