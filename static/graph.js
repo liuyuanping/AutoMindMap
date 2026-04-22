@@ -1,5 +1,6 @@
 let currentGraph = null;
 let simulation = null;
+let selectedNodeId = null;
 
 const analyzeBtn = document.getElementById('analyzeBtn');
 const saveBtn = document.getElementById('saveBtn');
@@ -10,11 +11,6 @@ const thresholdValue = document.getElementById('thresholdValue');
 const tooltipOffsetInput = document.getElementById('tooltipOffset');
 const tooltipOffsetValue = document.getElementById('tooltipOffsetValue');
 let currentTooltipOffset = 30;
-const statsDiv = document.getElementById('stats');
-const loadingDiv = document.getElementById('loading');
-const tooltip = document.getElementById('tooltip');
-const nodeDetailDiv = document.getElementById('nodeDetail');
-const savedFilesDiv = document.getElementById('savedFiles');
 
 analyzeBtn.addEventListener('click', analyzeDocuments);
 saveBtn.addEventListener('click', saveGraph);
@@ -38,6 +34,7 @@ async function analyzeDocuments() {
     }
 
     showLoading(true);
+    selectedNodeId = null;
 
     try {
         const response = await fetch('/api/analyze', {
@@ -82,6 +79,17 @@ function getNodeColor(level) {
 
 function getNodeRadius(level) {
     return Math.max(8, 20 - level * 2);
+}
+
+function getConnectedNodes(nodeId, edges) {
+    const connected = new Set([nodeId]);
+    edges.forEach(e => {
+        if (e.source === nodeId || e.target === nodeId) {
+            connected.add(e.source);
+            connected.add(e.target);
+        }
+    });
+    return connected;
 }
 
 function renderGraph(graph) {
@@ -134,7 +142,25 @@ function renderGraph(graph) {
 
     const allLinks = [...parentLinks, ...similarityLinks];
 
-    simulation = d3.forceSimulation(nodes)
+    // 确定哪些节点可见
+    let visibleNodes = nodes;
+    let visibleParentLinks = parentLinks;
+    let visibleSimLinks = similarityLinks;
+
+    if (selectedNodeId) {
+        const connected = getConnectedNodes(selectedNodeId, similarityLinks);
+        visibleNodes = nodes.filter(n => connected.has(n.id));
+        visibleParentLinks = parentLinks.filter(l =>
+            connected.has(typeof l.source === 'object' ? l.source.id : l.source) &&
+            connected.has(typeof l.target === 'object' ? l.target.id : l.target)
+        );
+        visibleSimLinks = similarityLinks.filter(l =>
+            connected.has(typeof l.source === 'object' ? l.source.id : l.source) &&
+            connected.has(typeof l.target === 'object' ? l.target.id : l.target)
+        );
+    }
+
+    simulation = d3.forceSimulation(visibleNodes)
         .force('link', d3.forceLink(allLinks).id(d => d.id).distance(d => d.isParent ? 80 : 150))
         .force('charge', d3.forceManyBody().strength(-200))
         .force('center', d3.forceCenter(width / 2, height / 2))
@@ -145,7 +171,7 @@ function renderGraph(graph) {
     // 绘制父子关系边（实线）
     const parentLink = g.append('g')
         .selectAll('line')
-        .data(parentLinks)
+        .data(visibleParentLinks)
         .enter()
         .append('line')
         .attr('class', 'parent-link')
@@ -156,7 +182,7 @@ function renderGraph(graph) {
     // 绘制相似度边（虚线）
     const simLink = g.append('g')
         .selectAll('line')
-        .data(similarityLinks)
+        .data(visibleSimLinks)
         .enter()
         .append('line')
         .attr('class', 'sim-link')
@@ -176,7 +202,7 @@ function renderGraph(graph) {
     // 相似度标签
     const simLabel = g.append('g')
         .selectAll('text')
-        .data(similarityLinks)
+        .data(visibleSimLinks)
         .enter()
         .append('text')
         .attr('class', 'sim-label')
@@ -188,7 +214,7 @@ function renderGraph(graph) {
     // 绘制节点
     const node = g.append('g')
         .selectAll('g')
-        .data(nodes)
+        .data(visibleNodes)
         .enter()
         .append('g')
         .attr('class', 'node')
@@ -196,7 +222,17 @@ function renderGraph(graph) {
             .on('start', dragstarted)
             .on('drag', dragged)
             .on('end', dragended))
-        .on('click', (event, d) => showNodeDetail(d))
+        .on('click', (event, d) => {
+            event.stopPropagation();
+            if (selectedNodeId === d.id) {
+                // 取消选择
+                selectedNodeId = null;
+            } else {
+                selectedNodeId = d.id;
+            }
+            renderGraph(currentGraph);
+            showNodeDetail(d);
+        })
         .on('mouseover', function(event, d) {
             const label = d.title || `Block ${d.chapter_index}.${d.section_index}`;
             showTooltip(event, `${label}\n${d.doc_path} | lines ${d.start_line}-${d.end_line}`);
@@ -206,14 +242,14 @@ function renderGraph(graph) {
     // 节点外圈（层级指示）
     node.append('circle')
         .attr('r', d => getNodeRadius(d.level))
-        .attr('fill', d => getNodeColor(d.level))
-        .attr('stroke', '#fff')
-        .attr('stroke-width', 2);
+        .attr('fill', d => selectedNodeId === d.id ? '#fff' : getNodeColor(d.level))
+        .attr('stroke', d => selectedNodeId === d.id ? getNodeColor(d.level) : '#fff')
+        .attr('stroke-width', d => selectedNodeId === d.id ? 3 : 2);
 
     // 节点内圈（类型指示）
     node.append('circle')
         .attr('r', d => d.level <= 1 ? 5 : 3)
-        .attr('fill', '#fff')
+        .attr('fill', selectedNodeId ? '#667eea' : '#fff')
         .attr('cx', 0)
         .attr('cy', 0);
 
@@ -227,6 +263,12 @@ function renderGraph(graph) {
         })
         .attr('fill', '#ccc')
         .attr('font-size', '10px');
+
+    // 点击空白处取消选择
+    svg.on('click', () => {
+        selectedNodeId = null;
+        renderGraph(currentGraph);
+    });
 
     simulation.on('tick', () => {
         parentLink
@@ -267,6 +309,8 @@ function renderGraph(graph) {
 }
 
 function showNodeDetail(node) {
+    if (!currentGraph) return;
+
     const parentNode = currentGraph.nodes.find(n => n.id === node.parent_id);
     const levelNames = ['顶级段落', '章节', '子章节', '小节', '小小节', '极小节', '微节'];
     const levelName = levelNames[Math.min(node.level, 6)] || '段落';
@@ -281,6 +325,22 @@ function showNodeDetail(node) {
     if (parentNode) {
         const parentTitle = parentNode.title || '(段落)';
         html += `<p class="meta">父节点: ${parentTitle}</p>`;
+    }
+
+    // 显示关联的块
+    const connectedEdges = currentGraph.edges.filter(e =>
+        e.source === node.id || e.target === node.id
+    );
+    if (connectedEdges.length > 0) {
+        html += `<p class="meta">关联块 (${connectedEdges.length}):</p>`;
+        connectedEdges.forEach(e => {
+            const otherId = e.source === node.id ? e.target : e.source;
+            const otherNode = currentGraph.nodes.find(n => n.id === otherId);
+            if (otherNode) {
+                const otherTitle = otherNode.title || '(段落)';
+                html += `<p class="meta" style="margin-left:10px;">• ${otherTitle} (${e.score.toFixed(2)})</p>`;
+            }
+        });
     }
 
     const renderedContent = node.content ? marked.parse(node.content) : '(无内容)';
@@ -348,6 +408,7 @@ async function loadSavedFiles() {
 
 async function loadGraphFile(path) {
     showLoading(true);
+    selectedNodeId = null;
 
     try {
         const response = await fetch(`/api/load?path=${encodeURIComponent(path)}`);
