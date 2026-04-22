@@ -359,7 +359,7 @@ function showNodeDetail(node) {
 
     const connectedEdges = currentGraph.edges.filter(e =>
         e.source === node.id || e.target === node.id
-    );
+    ).sort((a, b) => b.score - a.score);
     if (connectedEdges.length > 0) {
         html += `<p class="meta">关联块 (${connectedEdges.length}):</p>`;
         connectedEdges.forEach(e => {

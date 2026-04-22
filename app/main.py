@@ -27,7 +27,7 @@ async def index():
 async def analyze(request: AnalyzeRequest):
     # 相对路径从项目根目录解析
     project_root = Path(__file__).parent.parent
-    if Path(request.dir_path).isAbsolute():
+    if Path(request.dir_path).is_absolute():
         dir_path = Path(request.dir_path)
     else:
         dir_path = (project_root / request.dir_path).resolve()
@@ -84,7 +84,7 @@ async def save_graph(data: dict):
 @app.get("/api/load")
 async def load_graph(path: str):
     project_root = Path(__file__).parent.parent
-    if Path(path).isAbsolute():
+    if Path(path).is_absolute():
         file_path = Path(path)
     else:
         file_path = (project_root / path).resolve()
