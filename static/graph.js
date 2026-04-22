@@ -1,6 +1,7 @@
 let currentGraph = null;
 let simulation = null;
 let selectedNodeId = null;
+let selectedDocs = new Set();
 
 const analyzeBtn = document.getElementById('analyzeBtn');
 const saveBtn = document.getElementById('saveBtn');
@@ -20,12 +21,16 @@ const loadingDiv = document.getElementById('loading');
 const tooltip = document.getElementById('tooltip');
 const nodeDetailDiv = document.getElementById('nodeDetail');
 const savedFilesDiv = document.getElementById('savedFiles');
+const docSelectorDiv = document.getElementById('docSelector');
 
 analyzeBtn.addEventListener('click', analyzeDocuments);
 saveBtn.addEventListener('click', saveGraph);
 loadBtn.addEventListener('click', showLoadDialog);
 thresholdInput.addEventListener('input', (e) => {
     thresholdValue.textContent = e.target.value;
+    if (currentGraph) {
+        renderGraph(currentGraph);
+    }
 });
 
 tooltipOffsetInput.addEventListener('input', (e) => {
@@ -36,7 +41,13 @@ tooltipOffsetInput.addEventListener('input', (e) => {
 parentDepthInput.addEventListener('input', (e) => {
     parentDepthValue.textContent = e.target.value;
     currentParentDepth = parseInt(e.target.value);
-    if (selectedNodeId && currentGraph) {
+    if (currentGraph) {
+        renderGraph(currentGraph);
+    }
+});
+
+algorithmSelect.addEventListener('change', () => {
+    if (currentGraph) {
         renderGraph(currentGraph);
     }
 });
@@ -74,6 +85,7 @@ async function analyzeDocuments() {
         saveBtn.disabled = false;
 
         loadSavedFiles();
+        buildDocSelector();
 
     } catch (error) {
         alert('分析失败: ' + error.message);
@@ -173,6 +185,38 @@ function renderGraph(graph) {
     let visibleNodes = nodes;
     let visibleLinks = [...parentLinks, ...similarityLinks];
 
+    // Filter by selectedDocs
+    if (selectedDocs.size > 0) {
+        const allDocPaths = new Set(nodes.map(n => n.doc_path));
+        const totalDocs = allDocPaths.size;
+
+        if (selectedDocs.size < totalDocs) {
+            const threshold = parseFloat(thresholdInput.value);
+            const selectedDocNodes = new Set(nodes.filter(n => selectedDocs.has(n.doc_path)).map(n => n.id));
+
+            const thresholdConnected = new Set();
+            edges.forEach(e => {
+                const srcSelected = selectedDocNodes.has(e.source);
+                const tgtSelected = selectedDocNodes.has(e.target);
+                const meetsThreshold = e.score >= threshold;
+
+                if (meetsThreshold) {
+                    if (srcSelected && !tgtSelected) thresholdConnected.add(e.target);
+                    if (tgtSelected && !srcSelected) thresholdConnected.add(e.source);
+                }
+            });
+
+            visibleNodes = nodes.filter(n => selectedDocNodes.has(n.id) || thresholdConnected.has(n.id));
+
+            // Also filter links to only include edges where both endpoints are visible
+            visibleLinks = visibleLinks.filter(l => {
+                const srcId = typeof l.source === 'object' ? l.source.id : l.source;
+                const tgtId = typeof l.target === 'object' ? l.target.id : l.target;
+                return visibleNodes.some(n => n.id === srcId) && visibleNodes.some(n => n.id === tgtId);
+            });
+        }
+    }
+
     if (selectedNodeId) {
         const connected = new Set([selectedNodeId]);
 
@@ -205,13 +249,21 @@ function renderGraph(graph) {
         findAncestors(selectedNodeId, currentParentDepth);
         findDescendants(selectedNodeId, currentParentDepth);
 
-        visibleNodes = nodes.filter(n => connected.has(n.id));
-        visibleLinks = [...parentLinks, ...similarityLinks].filter(l => {
+        visibleNodes = visibleNodes.filter(n => connected.has(n.id));
+        visibleLinks = visibleLinks.filter(l => {
             const srcId = typeof l.source === 'object' ? l.source.id : l.source;
             const tgtId = typeof l.target === 'object' ? l.target.id : l.target;
             return connected.has(srcId) && connected.has(tgtId);
         });
     }
+
+    // Final safety filter: ensure all links reference visible nodes
+    const visibleNodeIds = new Set(visibleNodes.map(n => n.id));
+    visibleLinks = visibleLinks.filter(l => {
+        const srcId = typeof l.source === 'object' ? l.source.id : l.source;
+        const tgtId = typeof l.target === 'object' ? l.target.id : l.target;
+        return visibleNodeIds.has(srcId) && visibleNodeIds.has(tgtId);
+    });
 
     simulation = d3.forceSimulation(visibleNodes)
         .force('link', d3.forceLink(visibleLinks).id(d => d.id).distance(d => d.isParent ? 80 : 150))
@@ -414,6 +466,57 @@ function updateStats(metadata) {
         <span>创建时间: ${new Date(metadata.created_at).toLocaleString()}</span>
     `;
     statsDiv.classList.add('show');
+}
+
+function buildDocSelector() {
+    if (!currentGraph) return;
+
+    const docBlocks = {};
+    currentGraph.nodes.forEach(n => {
+        if (!docBlocks[n.doc_path]) {
+            docBlocks[n.doc_path] = [];
+        }
+        docBlocks[n.doc_path].push(n);
+    });
+
+    const docs = Object.keys(docBlocks).sort();
+    selectedDocs = new Set(docs); // 默认全选
+
+    docSelectorDiv.innerHTML = docs.map(doc => `
+        <div class="doc-item selected" data-doc="${doc}">
+            <input type="checkbox" checked>
+            <span class="doc-name">${doc}</span>
+            <span class="block-count">${docBlocks[doc].length}块</span>
+        </div>
+    `).join('');
+
+    docSelectorDiv.querySelectorAll('.doc-item').forEach(item => {
+        item.addEventListener('click', (e) => {
+            if (e.target.type === 'checkbox') return;
+            const checkbox = item.querySelector('input[type="checkbox"]');
+            checkbox.checked = !checkbox.checked;
+            item.classList.toggle('selected', checkbox.checked);
+
+            const doc = item.dataset.doc;
+            if (checkbox.checked) {
+                selectedDocs.add(doc);
+            } else {
+                selectedDocs.delete(doc);
+            }
+            renderGraph(currentGraph);
+        });
+
+        item.querySelector('input[type="checkbox"]').addEventListener('change', (e) => {
+            item.classList.toggle('selected', e.target.checked);
+            const doc = item.dataset.doc;
+            if (e.target.checked) {
+                selectedDocs.add(doc);
+            } else {
+                selectedDocs.delete(doc);
+            }
+            renderGraph(currentGraph);
+        });
+    });
 }
 
 async function saveGraph() {
