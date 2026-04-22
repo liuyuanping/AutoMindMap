@@ -95,6 +95,22 @@ function getNodeColor(level) {
     return colors[Math.min(level, 6)];
 }
 
+// 文件颜色映射
+const docColors = {};
+const docColorPalette = [
+    '#667eea', '#764ba2', '#48bb78', '#ed8936', '#f56565',
+    '#9f7aea', '#38b2ac', '#ed64a6', '#20c997', '#6610f2',
+    '#fd7e14', '#3b82f6', '#10b981', '#ef4444', '#8b5cf6'
+];
+
+function getDocColor(docPath) {
+    if (!docColors[docPath]) {
+        const idx = Object.keys(docColors).length % docColorPalette.length;
+        docColors[docPath] = docColorPalette[idx];
+    }
+    return docColors[docPath];
+}
+
 function getNodeRadius(level) {
     return Math.max(8, 20 - level * 2);
 }
@@ -272,12 +288,12 @@ function renderGraph(graph) {
         })
         .on('mouseout', hideTooltip);
 
-    // 节点外圈
+    // 节点外圈（层级指示）
     node.append('circle')
         .attr('r', d => getNodeRadius(d.level))
         .attr('fill', d => selectedNodeId === d.id ? '#fff' : getNodeColor(d.level))
-        .attr('stroke', d => selectedNodeId === d.id ? getNodeColor(d.level) : '#fff')
-        .attr('stroke-width', d => selectedNodeId === d.id ? 3 : 2);
+        .attr('stroke', d => getDocColor(d.doc_path))
+        .attr('stroke-width', d => selectedNodeId === d.id ? 4 : 3);
 
     // 节点内圈
     node.append('circle')
