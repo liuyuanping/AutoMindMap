@@ -1,6 +1,6 @@
 import re
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import List, Optional, Dict
 from app.schemas import Block
 
 
@@ -18,57 +18,89 @@ def parse_markdown_files(dir_path: str) -> List[Block]:
 
 
 def parse_single_file(file_path: str, doc_path: str) -> List[Block]:
-    """解析单个md文件，提取所有层级块（标题+段落）"""
+    """解析单个md文件，提取所有层级块
+
+    块结构：
+    - 每个标题是一个块
+    - 父块的内容 = 自身内容 + 所有子块内容（递归合并）
+    """
     with open(file_path, 'r', encoding='utf-8') as f:
         lines = f.readlines()
 
-    blocks = []
-    block_counter = 0
-
-    # 找出所有标题行
+    # 解析所有标题
     titles = []
     for i, line in enumerate(lines):
         stripped = line.strip()
         match = re.match(r'^(#{1,6})\s+(.+)$', stripped)
         if match:
-            level = len(match.group(1))
-            title = match.group(2).strip()
             titles.append({
                 'line_index': i,
-                'level': level,
-                'title': title,
+                'level': len(match.group(1)),
+                'title': match.group(2).strip(),
                 'start_line': i + 1
             })
 
-    # 确定每个标题的结束行（下一个同级或更高级标题之前）
+    # 确定每个标题的结束行
     for idx, t in enumerate(titles):
         if idx + 1 < len(titles):
             t['end_line'] = titles[idx + 1]['line_index']
         else:
             t['end_line'] = len(lines)
 
-    # 创建标题块
-    title_blocks = []
+    blocks = []
+    block_id_counter = 0
+    title_to_block_id = {}
+
+    # 处理文件开头的顶级内容
+    first_title_line = titles[0]['line_index'] if titles else len(lines)
+    top_content_lines = []
+    if first_title_line > 0:
+        for i in range(first_title_line):
+            stripped = lines[i].strip()
+            if stripped and not stripped.startswith('#'):
+                top_content_lines.append(lines[i].rstrip())
+
+    has_top_content = len(top_content_lines) > 0
+    if has_top_content:
+        block_id_counter += 1
+        top_block = Block(
+            id=f"{doc_path}:block:{block_id_counter}",
+            doc_path=doc_path,
+            chapter_index=0,
+            section_index=0,
+            title='',
+            content='\n'.join(top_content_lines),
+            start_line=1,
+            end_line=first_title_line,
+            level=0,
+            parent_id=None
+        )
+        blocks.append(top_block)
+
+    # 为每个标题创建块
     for idx, t in enumerate(titles):
-        block_counter += 1
-        # 找到父标题（最近的高级别标题）
+        block_id_counter += 1
+        block_id = f"{doc_path}:block:{block_id_counter}"
+        title_to_block_id[idx] = block_id
+
+        # 找父标题
         parent_id = None
-        for parent_idx in range(idx - 1, -1, -1):
-            if titles[parent_idx]['level'] < t['level']:
-                parent_id = f"{doc_path}:title:{parent_idx + 1}"
+        for pidx in range(idx - 1, -1, -1):
+            if titles[pidx]['level'] < t['level']:
+                parent_id = title_to_block_id[pidx]
                 break
 
-        # 收集该标题下的所有内容行（不含子标题）
+        # 收集该标题下的非子标题内容
         content_lines = []
         for line_idx in range(t['line_index'] + 1, t['end_line']):
-            line_stripped = lines[line_idx].strip()
-            # 跳过子标题行
-            if not line_stripped or re.match(r'^#{1,6}\s+', line_stripped):
+            stripped = lines[line_idx].strip()
+            if stripped.startswith('#'):
                 continue
-            content_lines.append(lines[line_idx].rstrip())
+            if stripped:
+                content_lines.append(lines[line_idx].rstrip())
 
         block = Block(
-            id=f"{doc_path}:title:{idx + 1}",
+            id=block_id,
             doc_path=doc_path,
             chapter_index=idx + 1,
             section_index=0,
@@ -79,133 +111,37 @@ def parse_single_file(file_path: str, doc_path: str) -> List[Block]:
             level=t['level'],
             parent_id=parent_id
         )
-        title_blocks.append(block)
         blocks.append(block)
 
-    # 创建段落块 - 每个非标题段落独立成块
-    paragraph_blocks = []
-    current_title_idx = -1  # 当前段落所属的标题索引
+    # 构建树结构，父子关系用block的id关联
+    # 已经是 parent_id 了，不需要额外处理
 
-    for idx, t in enumerate(titles):
-        # 确定该标题范围内的段落
-        start = t['line_index'] + 1
-        end = t['end_line']
+    # 现在计算每个块的完整内容（包含所有子块内容）
+    # 从叶子节点向上累加
+    # 先建立 id -> block 的映射
+    id_to_block = {b.id: b for b in blocks}
 
-        para_in_title = []
-        para_start = None
-        para_lines = []
+    # 找所有叶子节点（没有子块的块）
+    # 由于 blocks 是按文件顺序创建的，子块总是在父块之后
+    # 所以从后向前遍历，把子块内容加到父块
 
-        for line_idx in range(start, end):
-            line = lines[line_idx]
-            stripped = line.strip()
+    for i in range(len(blocks) - 1, -1, -1):
+        block = blocks[i]
+        children_contents = []
 
-            # 跳过空行和子标题
-            if not stripped or re.match(r'^#{1,6}\s+', stripped):
-                if para_lines:
-                    para_in_title.append((para_start, para_lines))
-                    para_start = None
-                    para_lines = []
-                continue
+        # 找到这个块的所有直接子块
+        for j in range(i + 1, len(blocks)):
+            child = blocks[j]
+            if child.parent_id == block.id:
+                # 这是直接子块，把它的（已合并的）内容加上
+                children_contents.append(child.content)
 
-            if para_start is None:
-                para_start = line_idx
-
-            para_lines.append(line.rstrip())
-
-        if para_lines:
-            para_in_title.append((para_start, para_lines))
-
-        # 为每个段落创建块
-        for para_start_line, para_content in para_in_title:
-            if not para_content:
-                continue
-
-            block_counter += 1
-            content = '\n'.join(para_content).strip()
-            if not content:
-                continue
-
-            # 该段落属于哪个标题
-            parent_id = f"{doc_path}:title:{idx + 1}"
-
-            block = Block(
-                id=f"{doc_path}:para:{block_counter}",
-                doc_path=doc_path,
-                chapter_index=idx + 1,
-                section_index=len(paragraph_blocks) + 1,
-                title='',
-                content=content,
-                start_line=para_start_line + 1,
-                end_line=para_start_line + len(para_content),
-                level=t['level'] + 1,  # 段落级别比标题高一級
-                parent_id=parent_id
-            )
-            paragraph_blocks.append(block)
-            blocks.append(block)
-
-    # 如果文件开头没有标题，创建顶级段落块
-    if titles and titles[0]['line_index'] > 0:
-        # 文件开头段落
-        para_lines = []
-        para_start = None
-        for line_idx in range(0, titles[0]['line_index']):
-            line = lines[line_idx]
-            stripped = line.strip()
-            if not stripped:
-                continue
-            if para_start is None:
-                para_start = line_idx
-            para_lines.append(line.rstrip())
-
-        if para_lines:
-            block_counter += 1
-            content = '\n'.join(para_lines).strip()
-            block = Block(
-                id=f"{doc_path}:para:{block_counter}",
-                doc_path=doc_path,
-                chapter_index=0,
-                section_index=0,
-                title='',
-                content=content,
-                start_line=1,
-                end_line=titles[0]['line_index'],
-                level=0,  # 顶级段落
-                parent_id=None
-            )
-            blocks.append(block)
-
-    # 顶级段落（文件中间没有标题的区域）
-    last_end = 0
-    for t in titles:
-        if t['line_index'] > last_end and last_end > 0:
-            # 有顶级内容
-            para_lines = []
-            para_start = None
-            for line_idx in range(last_end, t['line_index']):
-                line = lines[line_idx]
-                stripped = line.strip()
-                if not stripped:
-                    continue
-                if para_start is None:
-                    para_start = line_idx
-                para_lines.append(line.rstrip())
-
-            if para_lines:
-                block_counter += 1
-                content = '\n'.join(para_lines).strip()
-                block = Block(
-                    id=f"{doc_path}:para:{block_counter}",
-                    doc_path=doc_path,
-                    chapter_index=0,
-                    section_index=0,
-                    title='',
-                    content=content,
-                    start_line=last_end + 1,
-                    end_line=t['line_index'],
-                    level=0,
-                    parent_id=None
-                )
-                blocks.append(block)
-        last_end = t['end_line']
+        # 父块内容 = 自身内容 + 所有子块内容
+        if children_contents:
+            child_text = '\n'.join(children_contents)
+            if block.content:
+                block.content = block.content + '\n' + child_text
+            else:
+                block.content = child_text
 
     return blocks
