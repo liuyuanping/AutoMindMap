@@ -19,8 +19,8 @@ def parse_markdown_files(dir_path: str) -> List[Block]:
 def parse_single_file(file_path: str, doc_path: str) -> List[Block]:
     """解析单个md文件
 
-    每节的content = 从当前标题到下一同级节（或小节）前的所有内容
-    包括子标题行也要作为内容进行相似度分析
+    每节的content = 从当前标题行到下一同级节（或小节）前的所有内容
+    包括标题行本身
     """
     with open(file_path, 'r', encoding='utf-8') as f:
         lines = f.readlines()
@@ -42,7 +42,7 @@ def parse_single_file(file_path: str, doc_path: str) -> List[Block]:
     block_id_counter = 0
     title_to_block_id = {}
 
-    # 处理文件开头的顶级内容
+    # 处理文件开头的顶级内容（第一个标题之前）
     if titles and titles[0]['line_index'] > 0:
         top_lines = []
         for i in range(titles[0]['line_index']):
@@ -79,20 +79,17 @@ def parse_single_file(file_path: str, doc_path: str) -> List[Block]:
                 break
 
         # 找内容的结束位置：下一个同级或更高级标题
-        # 如果是 h2，则找下一个 h1 或 h2
-        # 如果是 h3，则找下一个 h1/h2/h3
-        content_end_line = len(lines)  # 默认到文件结尾
+        content_end_line = len(lines)
         for next_idx in range(idx + 1, len(titles)):
             if titles[next_idx]['level'] <= t['level']:
                 content_end_line = titles[next_idx]['line_index']
                 break
 
-        # 收集从当前标题之后到content_end_line之前的所有非空行
-        # 包括子标题行（以#开头的）
+        # 收集从当前标题行到content_end_line之前的所有非空行
+        # 包括当前标题行本身和子标题行
         content_lines = []
-        for line_idx in range(t['line_index'] + 1, content_end_line):
+        for line_idx in range(t['line_index'], content_end_line):
             line_stripped = lines[line_idx].strip()
-            # 只跳过完全空的行（空行或只有空格）
             if line_stripped == '':
                 continue
             content_lines.append(lines[line_idx].rstrip())
