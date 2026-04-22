@@ -86,17 +86,6 @@ function getNodeRadius(level) {
     return Math.max(8, 20 - level * 2);
 }
 
-function getConnectedNodes(nodeId, edges) {
-    const connected = new Set([nodeId]);
-    edges.forEach(e => {
-        if (e.source === nodeId || e.target === nodeId) {
-            connected.add(e.source);
-            connected.add(e.target);
-        }
-    });
-    return connected;
-}
-
 function renderGraph(graph) {
     const container = document.getElementById('graph');
     container.innerHTML = '';
@@ -145,33 +134,58 @@ function renderGraph(graph) {
         isParent: false
     }));
 
-    const allLinks = [...parentLinks, ...similarityLinks];
-
-    // 确定哪些节点可见
     let visibleNodes = nodes;
-    let visibleParentLinks = parentLinks;
-    let visibleSimLinks = similarityLinks;
+    let visibleLinks = [...parentLinks, ...similarityLinks];
 
     if (selectedNodeId) {
-        const connected = getConnectedNodes(selectedNodeId, similarityLinks);
+        const connected = new Set([selectedNodeId]);
+
+        // 通过相似度边连接
+        edges.forEach(e => {
+            if (e.source === selectedNodeId || e.target === selectedNodeId) {
+                connected.add(e.source);
+                connected.add(e.target);
+            }
+        });
+
+        // 通过父子关系连接
+        const findAncestors = (nodeId) => {
+            const node = nodes.find(n => n.id === nodeId);
+            if (node && node.parent_id) {
+                connected.add(node.parent_id);
+                findAncestors(node.parent_id);
+            }
+        };
+        const findDescendants = (nodeId) => {
+            nodes.forEach(n => {
+                if (n.parent_id === nodeId) {
+                    connected.add(n.id);
+                    findDescendants(n.id);
+                }
+            });
+        };
+        findAncestors(selectedNodeId);
+        findDescendants(selectedNodeId);
+
         visibleNodes = nodes.filter(n => connected.has(n.id));
-        visibleParentLinks = parentLinks.filter(l =>
-            connected.has(typeof l.source === 'object' ? l.source.id : l.source) &&
-            connected.has(typeof l.target === 'object' ? l.target.id : l.target)
-        );
-        visibleSimLinks = similarityLinks.filter(l =>
-            connected.has(typeof l.source === 'object' ? l.source.id : l.source) &&
-            connected.has(typeof l.target === 'object' ? l.target.id : l.target)
-        );
+        visibleLinks = [...parentLinks, ...similarityLinks].filter(l => {
+            const srcId = typeof l.source === 'object' ? l.source.id : l.source;
+            const tgtId = typeof l.target === 'object' ? l.target.id : l.target;
+            return connected.has(srcId) && connected.has(tgtId);
+        });
     }
 
     simulation = d3.forceSimulation(visibleNodes)
-        .force('link', d3.forceLink(allLinks).id(d => d.id).distance(d => d.isParent ? 80 : 150))
+        .force('link', d3.forceLink(visibleLinks).id(d => d.id).distance(d => d.isParent ? 80 : 150))
         .force('charge', d3.forceManyBody().strength(-200))
         .force('center', d3.forceCenter(width / 2, height / 2))
         .force('collision', d3.forceCollide().radius(30))
         .force('x', d3.forceX(width / 2).strength(0.05))
         .force('y', d3.forceY(height / 2).strength(0.05));
+
+    // 分离父子边和相似度边
+    const visibleParentLinks = visibleLinks.filter(l => l.isParent);
+    const visibleSimLinks = visibleLinks.filter(l => !l.isParent);
 
     // 绘制父子关系边（实线）
     const parentLink = g.append('g')
@@ -230,7 +244,6 @@ function renderGraph(graph) {
         .on('click', (event, d) => {
             event.stopPropagation();
             if (selectedNodeId === d.id) {
-                // 取消选择
                 selectedNodeId = null;
             } else {
                 selectedNodeId = d.id;
@@ -244,14 +257,14 @@ function renderGraph(graph) {
         })
         .on('mouseout', hideTooltip);
 
-    // 节点外圈（层级指示）
+    // 节点外圈
     node.append('circle')
         .attr('r', d => getNodeRadius(d.level))
         .attr('fill', d => selectedNodeId === d.id ? '#fff' : getNodeColor(d.level))
         .attr('stroke', d => selectedNodeId === d.id ? getNodeColor(d.level) : '#fff')
         .attr('stroke-width', d => selectedNodeId === d.id ? 3 : 2);
 
-    // 节点内圈（类型指示）
+    // 节点内圈
     node.append('circle')
         .attr('r', d => d.level <= 1 ? 5 : 3)
         .attr('fill', selectedNodeId ? '#667eea' : '#fff')
@@ -269,7 +282,6 @@ function renderGraph(graph) {
         .attr('fill', '#ccc')
         .attr('font-size', '10px');
 
-    // 点击空白处取消选择
     svg.on('click', () => {
         selectedNodeId = null;
         renderGraph(currentGraph);
@@ -332,7 +344,6 @@ function showNodeDetail(node) {
         html += `<p class="meta">父节点: ${parentTitle}</p>`;
     }
 
-    // 显示关联的块
     const connectedEdges = currentGraph.edges.filter(e =>
         e.source === node.id || e.target === node.id
     );
