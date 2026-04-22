@@ -11,6 +11,11 @@ const thresholdValue = document.getElementById('thresholdValue');
 const tooltipOffsetInput = document.getElementById('tooltipOffset');
 const tooltipOffsetValue = document.getElementById('tooltipOffsetValue');
 let currentTooltipOffset = 30;
+const statsDiv = document.getElementById('stats');
+const loadingDiv = document.getElementById('loading');
+const tooltip = document.getElementById('tooltip');
+const nodeDetailDiv = document.getElementById('nodeDetail');
+const savedFilesDiv = document.getElementById('savedFiles');
 
 analyzeBtn.addEventListener('click', analyzeDocuments);
 saveBtn.addEventListener('click', saveGraph);
