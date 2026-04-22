@@ -19,8 +19,10 @@ def parse_markdown_files(dir_path: str) -> List[Block]:
 def parse_single_file(file_path: str, doc_path: str) -> List[Block]:
     """解析单个md文件
 
-    每节的content = 从当前标题行到下一同级节（或小节）前的所有内容
-    包括标题行本身
+    块结构：
+    - 每个标题行是一个块
+    - 每个非标题段落也是一个块（最小粒度）
+    - 块包含从自身行到下一同级/更高级标题之前的所有内容
     """
     with open(file_path, 'r', encoding='utf-8') as f:
         lines = f.readlines()
@@ -41,6 +43,13 @@ def parse_single_file(file_path: str, doc_path: str) -> List[Block]:
     blocks = []
     block_id_counter = 0
     title_to_block_id = {}
+
+    # 确定每个标题的结束行（下一个同级或更高级标题之前）
+    for idx, t in enumerate(titles):
+        if idx + 1 < len(titles):
+            t['end_line'] = titles[idx + 1]['line_index']
+        else:
+            t['end_line'] = len(lines)
 
     # 处理文件开头的顶级内容（第一个标题之前）
     if titles and titles[0]['line_index'] > 0:
@@ -78,23 +87,12 @@ def parse_single_file(file_path: str, doc_path: str) -> List[Block]:
                 parent_id = title_to_block_id[pidx]
                 break
 
-        # 找内容的结束位置：下一个同级或更高级标题
-        content_end_line = len(lines)
-        for next_idx in range(idx + 1, len(titles)):
-            if titles[next_idx]['level'] <= t['level']:
-                content_end_line = titles[next_idx]['line_index']
-                break
-
-        # 收集从当前标题行到content_end_line之前的所有非空行
-        # 包括当前标题行本身和子标题行
-        # 保留空行以维持markdown格式
+        # 收集从当前标题行到end_line之前的所有非空行
         content_lines = []
-        for line_idx in range(t['line_index'], content_end_line):
+        for line_idx in range(t['line_index'], t['end_line']):
             stripped = lines[line_idx].strip()
-            # 跳过完全空的行（空行或只有空格）- 但保留用于markdown格式的空行
             if stripped == '':
-                # 保留空行（只保留一个连续空行）
-                if not content_lines or content_lines[-1] != '':
+                if content_lines and content_lines[-1] != '':
                     content_lines.append('')
                 continue
             content_lines.append(lines[line_idx].rstrip())
@@ -109,10 +107,83 @@ def parse_single_file(file_path: str, doc_path: str) -> List[Block]:
             title=t['title'],
             content=content,
             start_line=t['start_line'],
-            end_line=content_end_line,
+            end_line=t['end_line'],
             level=t['level'],
             parent_id=parent_id
         )
         blocks.append(block)
+
+        # 在标题块之后，创建该标题下的每个段落块
+        # 段落是连续的非标题行组成
+        para_start = None
+        para_lines = []
+
+        for line_idx in range(t['line_index'] + 1, t['end_line']):
+            stripped = lines[line_idx].strip()
+
+            # 如果是标题行或者是空行（段分隔符）
+            is_heading = stripped.startswith('#')
+            is_empty = stripped == ''
+
+            if is_heading:
+                # 保存之前的段落
+                if para_lines:
+                    block_id_counter += 1
+                    para_block = Block(
+                        id=f"{doc_path}:block:{block_id_counter}",
+                        doc_path=doc_path,
+                        chapter_index=idx + 1,
+                        section_index=block_id_counter,
+                        title='',
+                        content='\n'.join(para_lines).strip(),
+                        start_line=para_start + 1,
+                        end_line=line_idx,
+                        level=t['level'] + 1,
+                        parent_id=block_id
+                    )
+                    blocks.append(para_block)
+                    para_start = None
+                    para_lines = []
+            elif is_empty:
+                # 空行，分隔段落
+                if para_lines:
+                    block_id_counter += 1
+                    para_block = Block(
+                        id=f"{doc_path}:block:{block_id_counter}",
+                        doc_path=doc_path,
+                        chapter_index=idx + 1,
+                        section_index=block_id_counter,
+                        title='',
+                        content='\n'.join(para_lines).strip(),
+                        start_line=para_start + 1,
+                        end_line=line_idx,
+                        level=t['level'] + 1,
+                        parent_id=block_id
+                    )
+                    blocks.append(para_block)
+                    para_start = None
+                    para_lines = []
+            else:
+                # 正常段落行
+                if para_start is None:
+                    para_start = line_idx
+                para_lines.append(lines[line_idx].rstrip())
+
+        # 处理最后一段
+        if para_lines:
+            block_id_counter += 1
+            para_block = Block(
+                id=f"{doc_path}:block:{block_id_counter}",
+                doc_path=doc_path,
+                chapter_index=idx + 1,
+                section_index=block_id_counter,
+                title='',
+                content='\n'.join(para_lines).strip(),
+                start_line=para_start + 1,
+                end_line=t['end_line'],
+                level=t['level'] + 1,
+                parent_id=block_id
+            )
+            blocks.append(para_block)
 
     return blocks
