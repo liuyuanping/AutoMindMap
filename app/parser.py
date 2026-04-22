@@ -87,10 +87,15 @@ def parse_single_file(file_path: str, doc_path: str) -> List[Block]:
 
         # 收集从当前标题行到content_end_line之前的所有非空行
         # 包括当前标题行本身和子标题行
+        # 保留空行以维持markdown格式
         content_lines = []
         for line_idx in range(t['line_index'], content_end_line):
-            line_stripped = lines[line_idx].strip()
-            if line_stripped == '':
+            stripped = lines[line_idx].strip()
+            # 跳过完全空的行（空行或只有空格）- 但保留用于markdown格式的空行
+            if stripped == '':
+                # 保留空行（只保留一个连续空行）
+                if not content_lines or content_lines[-1] != '':
+                    content_lines.append('')
                 continue
             content_lines.append(lines[line_idx].rstrip())
 
