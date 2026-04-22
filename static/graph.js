@@ -7,6 +7,9 @@ const loadBtn = document.getElementById('loadBtn');
 const dirPathInput = document.getElementById('dirPath');
 const thresholdInput = document.getElementById('threshold');
 const thresholdValue = document.getElementById('thresholdValue');
+const tooltipOffsetInput = document.getElementById('tooltipOffset');
+const tooltipOffsetValue = document.getElementById('tooltipOffsetValue');
+let currentTooltipOffset = 10;
 const statsDiv = document.getElementById('stats');
 const loadingDiv = document.getElementById('loading');
 const tooltip = document.getElementById('tooltip');
@@ -18,6 +21,11 @@ saveBtn.addEventListener('click', saveGraph);
 loadBtn.addEventListener('click', showLoadDialog);
 thresholdInput.addEventListener('input', (e) => {
     thresholdValue.textContent = e.target.value;
+});
+
+tooltipOffsetInput.addEventListener('input', (e) => {
+    tooltipOffsetValue.textContent = e.target.value;
+    currentTooltipOffset = parseInt(e.target.value);
 });
 
 async function analyzeDocuments() {
@@ -354,8 +362,8 @@ function showLoading(show) {
 
 function showTooltip(event, text) {
     tooltip.textContent = text;
-    tooltip.style.left = (event.pageX + 10) + 'px';
-    tooltip.style.top = (event.pageY + 10) + 'px';
+    tooltip.style.left = (event.clientX + currentTooltipOffset) + 'px';
+    tooltip.style.top = (event.clientY + currentTooltipOffset) + 'px';
     tooltip.classList.add('show');
 }
 
