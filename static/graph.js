@@ -34,7 +34,7 @@ async function analyzeDocuments() {
     try {
         const response = await fetch('/api/analyze', {
             method: 'POST',
-            headers: { 'Content-Type': application/json },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ dir_path: dirPath, threshold })
         });
 
@@ -281,7 +281,7 @@ async function saveGraph() {
     try {
         const response = await fetch('/api/save', {
             method: 'POST',
-            headers: { 'Content-Type': application/json },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ graph: currentGraph, filename })
         });
 
