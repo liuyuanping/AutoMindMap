@@ -291,19 +291,20 @@ function renderGraph(graph) {
         })
         .on('mouseout', hideTooltip);
 
-    // 节点外圈（层级指示）
+    // 节点外圈（按文档着色）
     node.append('circle')
         .attr('r', d => getNodeRadius(d.level))
-        .attr('fill', d => selectedNodeId === d.id ? '#fff' : getNodeColor(d.level))
-        .attr('stroke', d => getDocColor(d.doc_path))
-        .attr('stroke-width', d => selectedNodeId === d.id ? 4 : 3);
+        .attr('fill', d => getDocColor(d.doc_path))
+        .attr('stroke', '#fff')
+        .attr('stroke-width', 2);
 
-    // 节点内圈
+    // 节点内圈（选中指示）
     node.append('circle')
         .attr('r', d => d.level <= 1 ? 5 : 3)
-        .attr('fill', selectedNodeId ? '#667eea' : '#fff')
+        .attr('fill', '#fff')
         .attr('cx', 0)
-        .attr('cy', 0);
+        .attr('cy', 0)
+        .attr('opacity', d => selectedNodeId && selectedNodeId !== d.id ? 0.3 : 1);
 
     // 节点标签
     node.append('text')
