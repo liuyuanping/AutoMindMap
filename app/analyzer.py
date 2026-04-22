@@ -108,8 +108,44 @@ def cosine_similarity(a: List[float], b: List[float]) -> float:
     return dot_product / (norm_a * norm_b)
 
 
-async def analyze_blocks(blocks: List[Block], threshold: float) -> Tuple[List[dict], List[dict]]:
-    """分析块之间的关联，返回节点和边"""
+def compute_tfidf_cosine_similarity(blocks: List[Block], threshold: float) -> List[Relation]:
+    """使用TF-IDF余弦相似度计算块之间的关联"""
+    try:
+        from sklearn.feature_extraction.text import TfidfVectorizer
+        from sklearn.metrics.pairwise import cosine_similarity as sk_cosine
+    except ImportError:
+        return compute_simple_similarity(blocks, threshold)
+
+    if len(blocks) < 2:
+        return []
+
+    texts = [block.content for block in blocks]
+
+    try:
+        vectorizer = TfidfVectorizer(max_features=5000, stop_words='english', ngram_range=(1, 2))
+        tfidf_matrix = vectorizer.fit_transform(texts)
+        similarity_matrix = sk_cosine(tfidf_matrix)
+
+        relations = []
+        n = len(blocks)
+
+        for i in range(n):
+            for j in range(i + 1, n):
+                score = float(similarity_matrix[i][j])
+                if score >= threshold:
+                    relations.append(Relation(
+                        source=blocks[i].id,
+                        target=blocks[j].id,
+                        score=score
+                    ))
+
+        return relations
+    except Exception:
+        return compute_simple_similarity(blocks, threshold)
+
+
+async def analyze_blocks_claude(blocks: List[Block], threshold: float) -> Tuple[List[dict], List[dict]]:
+    """使用Claude API分析块之间的关联"""
     relations = await compute_similarity_with_claude(blocks, threshold)
 
     nodes = []
@@ -139,8 +175,39 @@ async def analyze_blocks(blocks: List[Block], threshold: float) -> Tuple[List[di
     return nodes, edges
 
 
+def analyze_blocks_tfidf(blocks: List[Block], threshold: float) -> Tuple[List[dict], List[dict]]:
+    """使用TF-IDF余弦相似度分析块之间的关联"""
+    relations = compute_tfidf_cosine_similarity(blocks, threshold)
+
+    nodes = []
+    for block in blocks:
+        nodes.append({
+            'id': block.id,
+            'doc_path': block.doc_path,
+            'title': block.title,
+            'chapter_index': block.chapter_index,
+            'section_index': block.section_index,
+            'level': block.level,
+            'content': block.content,
+            'content_preview': block.content[:100] + '...' if len(block.content) > 100 else block.content,
+            'start_line': block.start_line,
+            'end_line': block.end_line,
+            'parent_id': block.parent_id
+        })
+
+    edges = []
+    for rel in relations:
+        edges.append({
+            'source': rel.source,
+            'target': rel.target,
+            'score': rel.score
+        })
+
+    return nodes, edges
+
+
 def analyze_blocks_simple(blocks: List[Block], threshold: float) -> Tuple[List[dict], List[dict]]:
-    """使用简单算法分析块之间的关联"""
+    """使用Jaccard算法分析块之间的关联"""
     relations = compute_simple_similarity(blocks, threshold)
 
     nodes = []

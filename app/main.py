@@ -6,7 +6,7 @@ from datetime import datetime
 import os
 import json
 from app.parser import parse_markdown_files
-from app.analyzer import analyze_blocks_simple
+from app.analyzer import analyze_blocks_simple, analyze_blocks_tfidf, analyze_blocks_claude
 from app.schemas import AnalyzeRequest
 
 app = FastAPI(title="Document Mind Map")
@@ -44,7 +44,17 @@ async def analyze(request: AnalyzeRequest):
         raise HTTPException(status_code=400, detail="No markdown files found")
 
     threshold = request.threshold
-    nodes, edges = analyze_blocks_simple(blocks, threshold)
+    algorithm = request.algorithm
+
+    if algorithm == "claude":
+        nodes, edges = await analyze_blocks_claude(blocks, threshold)
+        algo_name = "claude"
+    elif algorithm == "cosine":
+        nodes, edges = analyze_blocks_tfidf(blocks, threshold)
+        algo_name = "tfidf"
+    else:
+        nodes, edges = analyze_blocks_simple(blocks, threshold)
+        algo_name = "jaccard"
 
     doc_paths = set(block.doc_path for block in blocks)
 
@@ -55,7 +65,7 @@ async def analyze(request: AnalyzeRequest):
             "created_at": datetime.now().isoformat(),
             "doc_count": len(doc_paths),
             "block_count": len(blocks),
-            "algorithm": "simple"
+            "algorithm": algo_name
         }
     }
 

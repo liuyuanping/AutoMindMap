@@ -37,6 +37,7 @@ class GraphData(BaseModel):
 class AnalyzeRequest(BaseModel):
     dir_path: str
     threshold: float = 0.3
+    algorithm: str = "jaccard"
 
 
 class SaveRequest(BaseModel):

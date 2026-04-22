@@ -8,6 +8,7 @@ const loadBtn = document.getElementById('loadBtn');
 const dirPathInput = document.getElementById('dirPath');
 const thresholdInput = document.getElementById('threshold');
 const thresholdValue = document.getElementById('thresholdValue');
+const algorithmSelect = document.getElementById('algorithm');
 const tooltipOffsetInput = document.getElementById('tooltipOffset');
 const tooltipOffsetValue = document.getElementById('tooltipOffsetValue');
 const parentDepthInput = document.getElementById('parentDepth');
@@ -43,6 +44,7 @@ parentDepthInput.addEventListener('input', (e) => {
 async function analyzeDocuments() {
     const dirPath = dirPathInput.value.trim();
     const threshold = parseFloat(thresholdInput.value);
+    const algorithm = algorithmSelect.value;
 
     if (!dirPath) {
         alert('请输入文档目录路径');
@@ -56,7 +58,7 @@ async function analyzeDocuments() {
         const response = await fetch('/api/analyze', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ dir_path: dirPath, threshold })
+            body: JSON.stringify({ dir_path: dirPath, threshold, algorithm })
         });
 
         if (!response.ok) {
